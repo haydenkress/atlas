@@ -1,140 +1,140 @@
 // server.js
 const express = require('express');
-const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const { createClient } = require("@deepgram/sdk");
-const { OpenAI } = require('openai');
-const wav = require('wav');
-const axios = require('axios');
 require('dotenv').config();
 
-// Start express server
+const { createClient } = require('@deepgram/sdk');
+const { OpenAI } = require('openai');
+const { ElevenLabsClient } = require('elevenlabs');  // We'll handle streaming or returning full file
+
+const { Readable } = require('stream');
+
 const app = express();
 const port = 3000;
 
 // Initialize API clients
-const deepgram = createClient(DEEPGRAM_API_KEY);
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
+const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const elevenLabs = new ElevenLabsClient({ apiKey: process.env.ELEVEN_LABS_API_KEY });
+
+// -------------------------
+// 1. Route to handle audio
+// -------------------------
+app.post('/upload', async (req, res) => {
+  try {
+    // Collect raw audio data from the request
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    
+    req.on('end', async () => {
+      const audioBuffer = Buffer.concat(chunks);
+
+      // 1) Transcribe with Deepgram
+      const transcript = await transcribeAudio(audioBuffer);
+      console.log('Deepgram Transcript:', transcript);
+
+      // 2) Send transcript to GPT-4
+      const textResponse = await getOpenAIResponse(transcript);
+      console.log('OpenAI GPT-4 Response:', textResponse);
+
+      // 3) Convert GPT-4 response to speech via ElevenLabs
+      const ttsAudio = await textToSpeech(textResponse);
+      // ttsAudio is a Buffer of audio bytes (MP3, WAV, etc. depending on your settings)
+
+      // 4) Send back the TTS audio to the ESP32
+      // For a raw audio buffer, set appropriate headers
+      res.setHeader('Content-Type', 'audio/mpeg'); // or audio/wav
+      res.send(ttsAudio);
+    });
+  } catch (error) {
+    console.error('Error processing request:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-// Configure multer for handling file uploads
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
-
-// Ensure directories exist
-const recordingsDir = path.join(__dirname, 'recordings');
-const responsesDir = path.join(__dirname, 'responses');
-if (!fs.existsSync(recordingsDir)) fs.mkdirSync(recordingsDir);
-if (!fs.existsSync(responsesDir)) fs.mkdirSync(responsesDir);
-
-// Function to transcribe audio using Deepgram
-async function transcribeAudio(filePath) {
-    try {
-        const audioSource = {
-            stream: fs.createReadStream(filePath),
-            mimetype: 'audio/wav'
-        };
-
-        const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
-            audioSource,
-              {
-                model: "nova-2",
-              }
-            );
-
-        return response.results.channels[0].alternatives[0].transcript;
-    } catch (error) {
-        console.error('Error transcribing with Deepgram:', error);
-        throw error;
-    }
+// ---------------
+// Deepgram STT
+// ---------------
+async function transcribeAudio(audioBuffer) {
+  try {
+    // Using the new @deepgram/sdk approach
+    // If you’re using the older approach, adapt accordingly.
+    const { results } = await deepgram.listen.prerecorded.preRecordedFile(
+      { buffer: audioBuffer, mimetype: 'audio/wav' },
+      { model: 'nova-2' } // or 'nova-2' if you have access
+    );
+    
+    const transcript = results?.channels[0]?.alternatives[0]?.transcript || '';
+    return transcript;
+  } catch (error) {
+    console.error('Error transcribing with Deepgram:', error);
+    throw error;
+  }
 }
 
-// Function to generate speech using ElevenLabs API
-async function generateSpeech(text, outputPath) {
-    try {
-        const response = await axios({
-            method: 'POST',
-            url: `https://api.elevenlabs.io/v1/text-to-speech/${process.env.VOICE_ID}/stream`,
-            headers: {
-                'Accept': 'audio/mpeg',
-                'xi-api-key': process.env.ELEVEN_LABS_API_KEY,
-                'Content-Type': 'application/json'
-            },
-            data: {
-                text: text,
-                model_id: 'eleven_monolingual_v1',
-                voice_settings: {
-                    stability: 0.5,
-                    similarity_boost: 0.75
-                }
-            },
-            responseType: 'arraybuffer'
-        });
+// ---------------------
+// OpenAI Chat (GPT-4)
+// ---------------------
+async function getOpenAIResponse(userPrompt) {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are ATLAS, a helpful AI assistant with an attitude and demeanor like JARVIS from Iron Man. Keep responses concise and natural.'
+        },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.5,
+      max_tokens: 100
+    });
 
-        fs.writeFileSync(outputPath, response.data);
-        console.log('Speech generated successfully');
-        return true;
-    } catch (error) {
-        console.error('Error generating speech:', error.response?.data || error.message);
-        return false;
-    }
+    const textResponse = completion.choices[0].message.content.trim();
+    return textResponse;
+  } catch (error) {
+    console.error('Error with OpenAI GPT-4:', error);
+    throw error;
+  }
 }
 
-app.post('/upload', upload.single('audio'), async (req, res) => {
-    try {
-        // Create timestamped filenames
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const wavPath = path.join(recordingsDir, `recording_${timestamp}.wav`);
-        const responsePath = path.join(responsesDir, `response_${timestamp}.mp3`);
-        
-        // Create WAV file writer
-        const writer = new wav.FileWriter(wavPath, {
-            channels: 1,
-            sampleRate: 16000,
-            bitDepth: 16
-        });
-        
-        writer.write(req.file.buffer);
-        writer.end();
-        
-        console.log(`Saved recording to ${wavPath}`);
-        
-        // Transcribe with Deepgram
-        const transcription = await transcribeAudio(wavPath);
-        console.log('Transcription:', transcription);
-        
-        // Get ChatGPT response
-        const completion = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
-            messages: [
-                { role: 'system', content: 'You are ATLAS, a helpful AI assistant. Keep responses concise and natural.' },
-                { role: 'user', content: transcription }
-            ]
-        });
-        
-        const textResponse = completion.choices[0].message.content;
-        console.log('ChatGPT Response:', textResponse);
-        
-        // Generate speech from response
-        await generateSpeech(textResponse, responsePath);
-        
-        res.json({
-            status: 'success',
-            transcription: transcription,
-            response: textResponse,
-            audioPath: responsePath
-        });
-        
-    } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
+// ----------------------------------------------
+// ElevenLabs TTS (returns a Buffer of audio data)
+// ----------------------------------------------
+async function textToSpeech(text) {
+  try {
+    // Adjust voiceId, modelId, and outputFormat as desired
+    const voiceId = 'JBFqnCBsd6RMkjVDRZzb'; // Your chosen voice
+    const modelId = 'eleven_multilingual_v2';
 
+    // This returns a readable stream
+    const audioStream = await elevenLabs.textToSpeech.stream(voiceId, {
+      text,
+      modelId,
+      // For WAV: outputFormat: 'pcm_44100' or 'pcm_48000'
+      // For MP3: outputFormat: 'mp3_44100_128'
+      outputFormat: 'mp3_44100_128'
+    });
+
+    // Convert that stream to a Buffer
+    const chunks = [];
+    for await (const chunk of audioStream) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  } catch (error) {
+    console.error('Error converting text to speech with ElevenLabs:', error);
+    throw error;
+  }
+}
+
+// -----------------------
+// Start the Express App
+// -----------------------
 app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-    console.log(`Recordings will be saved to: ${recordingsDir}`);
-    console.log(`Responses will be saved to: ${responsesDir}`);
+  console.log(`Server running at http://localhost:${port}`);
 });
+app.get('/', (req, res) => {
+    res.send('Welcome to the ATLAS server!');
+  });
