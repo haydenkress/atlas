@@ -8,7 +8,7 @@ server/recordings/
 
 # Environment variables
 server/.env
-firmware/.env
+firmware/config.h
 
 # OS specific
 .DS_Store
