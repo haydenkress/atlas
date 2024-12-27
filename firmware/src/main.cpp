@@ -51,18 +51,29 @@ void stopRecording() {
 void recordAudio() {
     int32_t buffer[I2S_BUFFER_SIZE];
     size_t bytesRead = 0;
+    static unsigned long sampleCount = 0;
+    static unsigned long startTime = millis();
     
     // Read audio data from I2S
-    esp_err_t result = i2s_read(I2S_MIC_PORT, &buffer, I2S_BUFFER_SIZE, &bytesRead, portMAX_DELAY);
+    esp_err_t result = i2s_read(I2S_MIC_PORT, buffer, I2S_BUFFER_SIZE, &bytesRead, portMAX_DELAY);
     
     if (result == ESP_OK && bytesRead > 0) {
         size_t bytesWritten = audioFile.write((const uint8_t*)buffer, bytesRead);
         totalBytesWritten += bytesWritten;
+        sampleCount += bytesRead/4;  // 4 bytes per sample
         
         static unsigned long lastPrint = 0;
         if (millis() - lastPrint > 1000) {
             Serial.printf("Bytes Written: %u, File Size: %u\n", 
                 totalBytesWritten, audioFile.size());
+                float elapsedSeconds = (millis() - startTime) / 1000.0;
+                float sampleRate = sampleCount / elapsedSeconds;
+            
+            Serial.printf("Actual sample rate: %.2f Hz\n", sampleRate);
+            Serial.printf("Buffer Read: %d bytes, Written: %d bytes\n", bytesRead, bytesWritten);
+            Serial.printf("Total bytes: %u, Expected bytes: %u\n", 
+                totalBytesWritten, 
+                (unsigned int)(elapsedSeconds * 16000 * 4));
             lastPrint = millis();
         }
     }
