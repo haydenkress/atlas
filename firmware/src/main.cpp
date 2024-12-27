@@ -53,7 +53,7 @@ void recordAudio() {
     size_t bytesRead = 0;
     
     // Read audio data from I2S
-    esp_err_t result = i2s_read(I2S_NUM_0, &buffer, sizeof(buffer), &bytesRead, portMAX_DELAY);
+    esp_err_t result = i2s_read(I2S_MIC_PORT, &buffer, I2S_BUFFER_SIZE, &bytesRead, portMAX_DELAY);
     
     if (result == ESP_OK && bytesRead > 0) {
         size_t bytesWritten = audioFile.write((const uint8_t*)buffer, bytesRead);
@@ -140,7 +140,7 @@ void loop() {
         Serial.println("Button state changed. Resetting debounce timer.");
 
                 // Detect button press (HIGH to LOW transition)
-        if (currentButtonState == LOW && lastButtonState == HIGH) {
+        if (currentButtonState == HIGH && lastButtonState == LOW) {
             if (!isRecording) {
                 Serial.println("Button pressed - starting recording.");
                 startRecording();
@@ -150,7 +150,7 @@ void loop() {
         }
 
         // Detect button release (LOW to HIGH transition)
-        if (currentButtonState == HIGH && lastButtonState == LOW) {
+        if (currentButtonState == LOW && lastButtonState == HIGH) {
             if (isRecording) {
                 Serial.println("Button released - stopping recording.");
                 stopRecording();
