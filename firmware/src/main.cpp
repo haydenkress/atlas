@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <driver/i2s.h>
 #include <SPIFFS.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include "config.h"
 
 // Pin definitions
 const int BUTTON_PIN = 1;  // Choose appropriate digital pin
@@ -25,6 +28,11 @@ bool isRecording = false;
 const unsigned long DEBOUNCE_DELAY = 50;  // Debounce time in milliseconds
 unsigned long lastDebounceTime = 0;
 int lastButtonState = HIGH;
+
+// Add these definitions after your other constants
+const char* ssid = WIFI_SSID;        // Change this to your WiFi name
+const char* password = WIFI_PASSWORD; // Change this to your WiFi password
+WebServer server(80);
 
 void i2sInit() {
     i2s_config_t i2s_config = {
@@ -102,10 +110,46 @@ void setup() {
     // Initialize I2S
     i2sInit();
 
+    // Add WiFi and server setup
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.println("Connecting to WiFi...");
+    }
+    Serial.println("Connected to WiFi");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+
+    // Setup web server endpoint
+    server.on("/recording", HTTP_GET, []() {
+        File file = SPIFFS.open(RECORDING_FILE, FILE_READ);
+        if (!file) {
+            server.send(404, "text/plain", "File not found");
+            return;
+        }
+        
+        server.sendHeader("Content-Type", "audio/raw");
+        server.sendHeader("Content-Disposition", "attachment; filename=recording.raw");
+        server.streamFile(file, "audio/raw");
+        file.close();
+    });
+
+    server.begin();
+    Serial.println("Web server started");
+
     Serial.println("Setup complete - ready to record");
 }
 
 void loop() {
+
+    static unsigned long lastPrint = 0;
+    if (millis() - lastPrint > 5000) {  // Print every 5 seconds
+        Serial.print("Server IP Address: ");
+        Serial.println(WiFi.localIP());
+        lastPrint = millis();
+    }
+
+    server.handleClient();
 
     bool currentButtonState = digitalRead(BUTTON_PIN);
     Serial.print("Current button state: ");
@@ -136,9 +180,15 @@ void loop() {
                 Serial.println("Button released but not recording.");
             }
         }
-
     }
 
+    if (isRecording) {
+        recordAudio();
+        digitalWrite(LIGHT_PIN, HIGH);
+    } else {
+        digitalWrite(LIGHT_PIN, LOW);
+    }
+    
     lastButtonState = currentButtonState;
     delay(100);
 
