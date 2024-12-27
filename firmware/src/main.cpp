@@ -14,7 +14,6 @@ const int I2S_LRCL = 5;      // I2S Word Select
 
 // I2S configuration
 const int SAMPLE_RATE = 16000;
-const int BITS_PER_SAMPLE = 16;
 const int BUFFER_SIZE = 1024;
 
 // File handling
@@ -34,16 +33,24 @@ const char* ssid = WIFI_SSID;        // Change this to your WiFi name
 const char* password = WIFI_PASSWORD; // Change this to your WiFi password
 WebServer server(80);
 
+// Add this with your other global variables at the top
+// static int32_t i2s_buffer[BUFFER_SIZE/4];  // Move buffer to global scope
+
+// Add this with your other global variables
+unsigned long recordingStartTime = 0;
+size_t totalBytesWritten = 0;
+
+
 void i2sInit() {
     i2s_config_t i2s_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
         .sample_rate = SAMPLE_RATE,
-        .bits_per_sample = (i2s_bits_per_sample_t)BITS_PER_SAMPLE,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
         .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
         .communication_format = I2S_COMM_FORMAT_STAND_I2S,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count = 8,
-        .dma_buf_len = BUFFER_SIZE,
+        .dma_buf_count = 4,
+        .dma_buf_len = 1024,
         .use_apll = false,
         .tx_desc_auto_clear = false,
         .fixed_mclk = 0
@@ -70,26 +77,42 @@ void startRecording() {
         return;
     }
     isRecording = true;
+    recordingStartTime = millis();
+    totalBytesWritten = 0;
     Serial.println("Started recording...");
 }
 
 void stopRecording() {
+
+    unsigned long recordingDuration = (millis() - recordingStartTime) / 1000;
+
     audioFile.close();
     isRecording = false;
-    Serial.println("Stopped recording");
+    
+    Serial.printf("Recording stopped. Duration: %lu seconds, Bytes written: %u\n", 
+        recordingDuration, totalBytesWritten);
 }
 
 void recordAudio() {
-    int16_t buffer[BUFFER_SIZE];
+    int32_t buffer[BUFFER_SIZE];
     size_t bytesRead = 0;
-
+    
     // Read audio data from I2S
     esp_err_t result = i2s_read(I2S_NUM_0, &buffer, sizeof(buffer), &bytesRead, portMAX_DELAY);
-
+    
     if (result == ESP_OK && bytesRead > 0) {
-        audioFile.write((uint8_t*)buffer, bytesRead);
+        size_t bytesWritten = audioFile.write((const uint8_t*)buffer, bytesRead);
+        totalBytesWritten += bytesWritten;
+        
+        static unsigned long lastPrint = 0;
+        if (millis() - lastPrint > 1000) {
+            Serial.printf("Bytes Written: %u, File Size: %u\n", 
+                totalBytesWritten, audioFile.size());
+            lastPrint = millis();
+        }
     }
 }
+
 
 void setup() {
     Serial.begin(115200);
@@ -193,7 +216,6 @@ void loop() {
     delay(100);
 
 }
-
 // void loop() {
 //     // Read the button state
 //     bool currentButtonState = digitalRead(BUTTON_PIN);
