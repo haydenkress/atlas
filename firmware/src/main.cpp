@@ -5,16 +5,6 @@
 #include <WebServer.h>
 #include "config.h"
 
-// Pin definitions
-const int BUTTON_PIN = 1;  // Choose appropriate digital pin
-const int LIGHT_PIN = 2;
-const int I2S_BCLK = 3;     // I2S Serial Clock
-const int I2S_DOUT = 4;      // I2S Serial Data
-const int I2S_LRCL = 5;      // I2S Word Select
-
-// I2S configuration
-const int SAMPLE_RATE = 16000;
-const int BUFFER_SIZE = 1024;
 
 // File handling
 const char* RECORDING_FILE = "/recording.raw";
@@ -22,10 +12,6 @@ File audioFile;
 
 // Recording state
 bool isRecording = false;
-
-// Add these variables after other global declarations
-const unsigned long DEBOUNCE_DELAY = 50;  // Debounce time in milliseconds
-unsigned long lastDebounceTime = 0;
 int lastButtonState = HIGH;
 
 // Add these definitions after your other constants
@@ -33,41 +19,10 @@ const char* ssid = WIFI_SSID;        // Change this to your WiFi name
 const char* password = WIFI_PASSWORD; // Change this to your WiFi password
 WebServer server(80);
 
-// Add this with your other global variables at the top
-// static int32_t i2s_buffer[BUFFER_SIZE/4];  // Move buffer to global scope
-
 // Add this with your other global variables
 unsigned long recordingStartTime = 0;
 size_t totalBytesWritten = 0;
 
-
-void i2sInit() {
-    i2s_config_t i2s_config = {
-        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-        .sample_rate = SAMPLE_RATE,
-        .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
-        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count = 4,
-        .dma_buf_len = 1024,
-        .use_apll = false,
-        .tx_desc_auto_clear = false,
-        .fixed_mclk = 0
-    };
-
-    i2s_pin_config_t pin_config = {
-        .mck_io_num = I2S_PIN_NO_CHANGE,
-        .bck_io_num = I2S_BCLK,
-        .ws_io_num = I2S_LRCL,
-        .data_out_num = I2S_PIN_NO_CHANGE,
-        .data_in_num = I2S_DOUT
-    };
-
-    // Install and start I2S driver
-    i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
-    i2s_set_pin(I2S_NUM_0, &pin_config);
-}
 
 void startRecording() {
     // Open file for writing
@@ -94,7 +49,7 @@ void stopRecording() {
 }
 
 void recordAudio() {
-    int32_t buffer[BUFFER_SIZE];
+    int32_t buffer[I2S_BUFFER_SIZE];
     size_t bytesRead = 0;
     
     // Read audio data from I2S
