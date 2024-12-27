@@ -20,10 +20,11 @@ File audioFile;
 
 // Recording state
 bool isRecording = false;
-//debouncing
-bool lastButtonState = HIGH;
+
+// Add these variables after other global declarations
+const unsigned long DEBOUNCE_DELAY = 50;  // Debounce time in milliseconds
 unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 50;  // Adjust this value if needed
+int lastButtonState = HIGH;
 
 void i2sInit() {
     i2s_config_t i2s_config = {
@@ -105,17 +106,96 @@ void setup() {
 }
 
 void loop() {
-    // Check button state
-    if (digitalRead(BUTTON_PIN) == LOW) {  // Button pressed
-        if (!isRecording) {
-            startRecording();
+
+    bool currentButtonState = digitalRead(BUTTON_PIN);
+    Serial.print("Current button state: ");
+    Serial.println(currentButtonState ? "HIGH" : "LOW");
+
+    Serial.print("Last button state: ");
+    Serial.println(lastButtonState ? "HIGH" : "LOW");
+
+    if (currentButtonState != lastButtonState) {
+        Serial.println("Button state changed. Resetting debounce timer.");
+
+                // Detect button press (HIGH to LOW transition)
+        if (currentButtonState == LOW && lastButtonState == HIGH) {
+            if (!isRecording) {
+                Serial.println("Button pressed - starting recording.");
+                startRecording();
+            } else {
+                Serial.println("Button pressed but already recording.");
+            }
         }
-        recordAudio();
-        digitalWrite(LIGHT_PIN, HIGH);
-    } else {  // Button released
-        if (isRecording) {
-            stopRecording();
+
+        // Detect button release (LOW to HIGH transition)
+        if (currentButtonState == HIGH && lastButtonState == LOW) {
+            if (isRecording) {
+                Serial.println("Button released - stopping recording.");
+                stopRecording();
+            } else {
+                Serial.println("Button released but not recording.");
+            }
         }
-        digitalWrite(LIGHT_PIN, LOW);
+
     }
+
+    lastButtonState = currentButtonState;
+    delay(100);
+
 }
+
+// void loop() {
+//     // Read the button state
+//     bool currentButtonState = digitalRead(BUTTON_PIN);
+//     Serial.print("Current button state: ");
+//     Serial.println(currentButtonState ? "HIGH" : "LOW");
+
+//     // Debounce logic
+//     if (currentButtonState != lastButtonState) {
+//         lastDebounceTime = millis();
+//         Serial.println("Button state changed. Resetting debounce timer.");
+//     }
+
+//     // Check if the debounce delay has passed
+//     if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
+//         Serial.print("Debounce stable state detected: ");
+//         Serial.println(currentButtonState ? "HIGH" : "LOW");
+
+//         // Detect button press (HIGH to LOW transition)
+//         if (currentButtonState == LOW && lastButtonState == HIGH) {
+//             if (!isRecording) {
+//                 Serial.println("Button pressed - starting recording.");
+//                 startRecording();
+//             } else {
+//                 Serial.println("Button pressed but already recording.");
+//             }
+//         }
+
+//         // Detect button release (LOW to HIGH transition)
+//         if (currentButtonState == HIGH && lastButtonState == LOW) {
+//             if (isRecording) {
+//                 Serial.println("Button released - stopping recording.");
+//                 stopRecording();
+//             } else {
+//                 Serial.println("Button released but not recording.");
+//             }
+//         }
+//     } else {
+//         Serial.println("Debounce delay active, ignoring button changes.");
+//     }
+
+//     // Update the last button state
+//     lastButtonState = currentButtonState;
+
+//     // Log recording activity
+//     if (isRecording) {
+//         Serial.println("Recording in progress...");
+//         recordAudio();
+//         digitalWrite(LIGHT_PIN, HIGH);
+//     } else {
+//         Serial.println("Not recording.");
+//         digitalWrite(LIGHT_PIN, LOW);
+//     }
+
+//     delay(100);  // Small delay to avoid flooding the serial monitor
+// }
