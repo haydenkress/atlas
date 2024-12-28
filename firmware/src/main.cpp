@@ -102,11 +102,11 @@ void recordAudio() {
 
       static int16_t wavBuffer[I2S_BUFFER_SIZE / 4];
 
-      for (size_t i = 0; i < samplesRead; i++) {
-        // Typical ICS-43434 is left-justified, so shift right by 8
-        int32_t sample32 = i2sReadBuffer[i];
-        int16_t sample16 = sample32 >> 8;  // keep top 16 bits
-        wavBuffer[i] = sample16;
+    for (size_t i = 0; i < samplesRead; i++) {
+    // Assuming left-justified data, take the top 16 bits
+    int32_t sample32 = i2sReadBuffer[i];
+    int16_t sample16 = (int16_t)(sample32 >> 16); // Cast to 16-bit signed
+    wavBuffer[i] = sample16;
     }
 
     size_t bytesToWrite = samplesRead * sizeof(int16_t);
