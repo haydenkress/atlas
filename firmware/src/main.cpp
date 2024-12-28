@@ -12,7 +12,7 @@ File audioFile;
 
 // Recording state
 bool isRecording = false;
-int lastButtonState = HIGH;
+int lastButtonState = LOW; // see if this works
 
 // Add these definitions after your other constants
 const char* ssid = WIFI_SSID;        // Change this to your WiFi name
@@ -23,7 +23,7 @@ WebServer server(80);
 unsigned long recordingStartTime = 0;
 size_t totalBytesWritten = 0;
 
-void writeWavHeader(File &file, uint32_t dataSize, uint32_t sampleRate) {
+void writeWavHeader(File &file, uint32_t dataSize) {
     // WAV header for PCM format
     uint8_t header[44] = {
         'R', 'I', 'F', 'F',
@@ -33,31 +33,25 @@ void writeWavHeader(File &file, uint32_t dataSize, uint32_t sampleRate) {
         16, 0, 0, 0, // Subchunk1Size (16 for PCM)
         1, 0, // AudioFormat (1 for PCM)
         1, 0, // NumChannels (1 for mono)
-        0, 0, 0, 0, // SampleRate (to be updated)
-        0, 0, 0, 0, // ByteRate (to be updated)
+        0x40, 0x3E, 0, 0, // SampleRate
+        0x80, 0x7D, 0, 0, // ByteRate
         2, 0, // BlockAlign (NumChannels * BitsPerSample/8)
         16, 0, // BitsPerSample
         'd', 'a', 't', 'a',
         0, 0, 0, 0 // Subchunk2Size (to be updated)
     };
 
-    uint32_t byteRate = sampleRate * 2; // SampleRate * NumChannels * BitsPerSample/8
     uint32_t chunkSize = 36 + dataSize;
     uint32_t subchunk2Size = dataSize;
 
     // Update header with actual values
     memcpy(&header[4], &chunkSize, 4);
-    memcpy(&header[24], &sampleRate, 4);
-    memcpy(&header[28], &byteRate, 4);
     memcpy(&header[40], &subchunk2Size, 4);
 
     file.seek(0);
     file.write(header, 44);
 }
 
-void updateWavHeader(File &file, uint32_t dataSize, uint32_t sampleRate) {
-    writeWavHeader(file, dataSize, sampleRate);
-}
 
 void startRecording() {
     // Open file for writing
@@ -66,9 +60,6 @@ void startRecording() {
         Serial.println("Failed to open file for writing");
         return;
     }
-
-    // Write WAV header placeholder
-    writeWavHeader(audioFile, 0, I2S_SAMPLE_RATE);
 
     isRecording = true;
     recordingStartTime = millis();
@@ -80,7 +71,7 @@ void stopRecording() {
     unsigned long recordingDuration = (millis() - recordingStartTime) / 1000;
 
     // Update WAV header with actual sizes
-    updateWavHeader(audioFile, totalBytesWritten, I2S_SAMPLE_RATE);
+    writeWavHeader(audioFile, totalBytesWritten);
 
     audioFile.close();
     isRecording = false;
@@ -95,33 +86,42 @@ void stopRecording() {
 
 
 void recordAudio() {
-    int8_t buffer[I2S_BUFFER_SIZE];
+    int32_t i2sReadBuffer[I2S_BUFFER_SIZE / 4];
     size_t bytesRead = 0;
     static unsigned long sampleCount = 0;
     static unsigned long startTime = millis();
     
     // Read audio data from I2S
-    esp_err_t result = i2s_read(I2S_MIC_PORT, buffer, I2S_BUFFER_SIZE, &bytesRead, portMAX_DELAY);
-    
-    if (result == ESP_OK && bytesRead > 0) {
-        size_t bytesWritten = audioFile.write((const uint8_t*)buffer, bytesRead);
-        totalBytesWritten += bytesWritten;
-        sampleCount += bytesRead/4;  // 4 bytes per sample
-        
-        static unsigned long lastPrint = 0;
-        if (millis() - lastPrint > 1000) {
-            Serial.printf("Bytes Written: %u, File Size: %u\n", 
-                totalBytesWritten, audioFile.size());
-                float elapsedSeconds = (millis() - startTime) / 1000.0;
-                float sampleRate = sampleCount / elapsedSeconds;
-            
-            Serial.printf("Actual sample rate: %.2f Hz\n", sampleRate);
-            Serial.printf("Buffer Read: %d bytes, Written: %d bytes\n", bytesRead, bytesWritten);
-            Serial.printf("Total bytes: %u, Expected bytes: %u\n", 
-                totalBytesWritten, 
-                (unsigned int)(elapsedSeconds * I2S_SAMPLE_RATE * I2S_BITS_PER_SAMPLE / 8));
-            lastPrint = millis();
-        }
+    esp_err_t result = i2s_read(I2S_MIC_PORT, (char*)i2sReadBuffer, I2S_BUFFER_SIZE, &bytesRead, portMAX_DELAY);
+    if (result != ESP_OK || bytesRead == 0) {
+        return;
+    }
+
+     size_t samplesRead = bytesRead / sizeof(int32_t);
+        sampleCount += samplesRead; 
+
+      static int16_t wavBuffer[I2S_BUFFER_SIZE / 4];
+
+      for (size_t i = 0; i < samplesRead; i++) {
+        // Typical ICS-43434 is left-justified, so shift right by 8
+        int32_t sample32 = i2sReadBuffer[i];
+        int16_t sample16 = sample32 >> 8;  // keep top 16 bits
+        wavBuffer[i] = sample16;
+    }
+
+    size_t bytesToWrite = samplesRead * sizeof(int16_t);
+    size_t bytesWritten = audioFile.write((uint8_t*)wavBuffer, bytesToWrite);
+
+    totalBytesWritten += bytesWritten;
+
+    static unsigned long lastPrint = 0;
+    if (millis() - lastPrint > 1000) {
+        float elapsedSeconds = (millis() - recordingStartTime) / 1000.0;
+        float actualSampleRate = sampleCount / elapsedSeconds;
+        Serial.printf("Bytes Written: %u, File Size: %u\n", totalBytesWritten, audioFile.size());
+        Serial.printf("Actual sample rate: %.2f Hz\n", actualSampleRate);
+        Serial.printf("Buffer Read: %d bytes, Written: %d bytes\n", bytesRead, bytesWritten);
+        lastPrint = millis();
     }
 }
 

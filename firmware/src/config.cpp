@@ -5,12 +5,12 @@
 i2s_config_t i2s_mic_Config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
     .sample_rate = I2S_SAMPLE_RATE,
-    .bits_per_sample = i2s_bits_per_sample_t(I2S_BITS_PER_SAMPLE),
+    .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-    .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_STAND_I2S),
+    .communication_format = I2S_COMM_FORMAT_I2S,
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-    .dma_buf_count = 8,
-    .dma_buf_len = I2S_BUFFER_SIZE,
+    .dma_buf_count = 4,
+    .dma_buf_len = 256,
     .use_apll = true,
     .tx_desc_auto_clear = false,
     .fixed_mclk = 0,
@@ -60,13 +60,6 @@ void i2sInit() {
     err = i2s_set_pin(I2S_MIC_PORT, &i2s_mic_pins);
     if (err != ESP_OK) {
         Serial.printf("Failed setting microphone pins: %d\n", err);
-        return;
-    }
-
-    // Add these lines to set the clock configuration
-    err = i2s_set_clk(I2S_MIC_PORT, I2S_SAMPLE_RATE, I2S_BITS_PER_SAMPLE, I2S_CHANNEL_MONO);
-    if (err != ESP_OK) {
-        Serial.printf("Failed setting I2S clock: %d\n", err);
         return;
     }
 
