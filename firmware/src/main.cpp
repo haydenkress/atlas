@@ -7,7 +7,7 @@
 #include "AudioTools.h"
 
 // File handling
-const char* RECORDING_FILE = "/recording.raw";
+const char* RECORDING_FILE = "/recording.wav";
 File audioFile;
 
 // Recording state
@@ -23,6 +23,41 @@ WebServer server(80);
 unsigned long recordingStartTime = 0;
 size_t totalBytesWritten = 0;
 
+void writeWavHeader(File &file, uint32_t dataSize, uint32_t sampleRate) {
+    // WAV header for PCM format
+    uint8_t header[44] = {
+        'R', 'I', 'F', 'F',
+        0, 0, 0, 0, // ChunkSize (to be updated)
+        'W', 'A', 'V', 'E',
+        'f', 'm', 't', ' ',
+        16, 0, 0, 0, // Subchunk1Size (16 for PCM)
+        1, 0, // AudioFormat (1 for PCM)
+        1, 0, // NumChannels (1 for mono)
+        0, 0, 0, 0, // SampleRate (to be updated)
+        0, 0, 0, 0, // ByteRate (to be updated)
+        2, 0, // BlockAlign (NumChannels * BitsPerSample/8)
+        16, 0, // BitsPerSample
+        'd', 'a', 't', 'a',
+        0, 0, 0, 0 // Subchunk2Size (to be updated)
+    };
+
+    uint32_t byteRate = sampleRate * 2; // SampleRate * NumChannels * BitsPerSample/8
+    uint32_t chunkSize = 36 + dataSize;
+    uint32_t subchunk2Size = dataSize;
+
+    // Update header with actual values
+    memcpy(&header[4], &chunkSize, 4);
+    memcpy(&header[24], &sampleRate, 4);
+    memcpy(&header[28], &byteRate, 4);
+    memcpy(&header[40], &subchunk2Size, 4);
+
+    file.seek(0);
+    file.write(header, 44);
+}
+
+void updateWavHeader(File &file, uint32_t dataSize, uint32_t sampleRate) {
+    writeWavHeader(file, dataSize, sampleRate);
+}
 
 void startRecording() {
     // Open file for writing
@@ -31,6 +66,10 @@ void startRecording() {
         Serial.println("Failed to open file for writing");
         return;
     }
+
+    // Write WAV header placeholder
+    writeWavHeader(audioFile, 0, I2S_SAMPLE_RATE);
+
     isRecording = true;
     recordingStartTime = millis();
     totalBytesWritten = 0;
@@ -38,18 +77,25 @@ void startRecording() {
 }
 
 void stopRecording() {
-
     unsigned long recordingDuration = (millis() - recordingStartTime) / 1000;
+
+    // Update WAV header with actual sizes
+    updateWavHeader(audioFile, totalBytesWritten, I2S_SAMPLE_RATE);
 
     audioFile.close();
     isRecording = false;
+
+    unsigned long expectedBytes = recordingDuration * I2S_SAMPLE_RATE * I2S_BITS_PER_SAMPLE / 8;
     
     Serial.printf("Recording stopped. Duration: %lu seconds, Bytes written: %u\n", 
         recordingDuration, totalBytesWritten);
+    Serial.printf("Expected bytes: %lu\n", expectedBytes);
 }
 
+
+
 void recordAudio() {
-    int32_t buffer[I2S_BUFFER_SIZE];
+    int8_t buffer[I2S_BUFFER_SIZE];
     size_t bytesRead = 0;
     static unsigned long sampleCount = 0;
     static unsigned long startTime = millis();
@@ -73,7 +119,7 @@ void recordAudio() {
             Serial.printf("Buffer Read: %d bytes, Written: %d bytes\n", bytesRead, bytesWritten);
             Serial.printf("Total bytes: %u, Expected bytes: %u\n", 
                 totalBytesWritten, 
-                (unsigned int)(elapsedSeconds * 16000 * 4));
+                (unsigned int)(elapsedSeconds * I2S_SAMPLE_RATE * I2S_BITS_PER_SAMPLE / 8));
             lastPrint = millis();
         }
     }
@@ -117,9 +163,9 @@ void setup() {
             return;
         }
         
-        server.sendHeader("Content-Type", "audio/raw");
-        server.sendHeader("Content-Disposition", "attachment; filename=recording.raw");
-        server.streamFile(file, "audio/raw");
+        server.sendHeader("Content-Type", "audio/wav");
+        server.sendHeader("Content-Disposition", "attachment; filename=recording.wav");
+        server.streamFile(file, "audio/wav");
         file.close();
     });
 
@@ -179,6 +225,5 @@ void loop() {
     }
     
     lastButtonState = currentButtonState;
-    delay(100);
-
+    delay(10);
 }
