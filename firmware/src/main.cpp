@@ -4,7 +4,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "config.h"
-
+#include "AudioTools.h"
 
 // File handling
 const char* RECORDING_FILE = "/recording.raw";
@@ -132,23 +132,23 @@ void setup() {
 void loop() {
 
     static unsigned long lastPrint = 0;
-    if (millis() - lastPrint > 5000) {  // Print every 5 seconds
-        Serial.print("Server IP Address: ");
-        Serial.println(WiFi.localIP());
-        lastPrint = millis();
-    }
+    // if (millis() - lastPrint > 5000) {  // Print every 5 seconds
+    //     Serial.print("Server IP Address: ");
+    //     Serial.println(WiFi.localIP());
+    //     lastPrint = millis();
+    // }
 
     server.handleClient();
 
     bool currentButtonState = digitalRead(BUTTON_PIN);
-    Serial.print("Current button state: ");
-    Serial.println(currentButtonState ? "HIGH" : "LOW");
+    // Serial.print("Current button state: ");
+    // Serial.println(currentButtonState ? "HIGH" : "LOW");
 
-    Serial.print("Last button state: ");
-    Serial.println(lastButtonState ? "HIGH" : "LOW");
+    // Serial.print("Last button state: ");
+    // Serial.println(lastButtonState ? "HIGH" : "LOW");
 
     if (currentButtonState != lastButtonState) {
-        Serial.println("Button state changed. Resetting debounce timer.");
+        // Serial.println("Button state changed. Resetting debounce timer.");
 
                 // Detect button press (HIGH to LOW transition)
         if (currentButtonState == HIGH && lastButtonState == LOW) {
@@ -182,58 +182,3 @@ void loop() {
     delay(100);
 
 }
-// void loop() {
-//     // Read the button state
-//     bool currentButtonState = digitalRead(BUTTON_PIN);
-//     Serial.print("Current button state: ");
-//     Serial.println(currentButtonState ? "HIGH" : "LOW");
-
-//     // Debounce logic
-//     if (currentButtonState != lastButtonState) {
-//         lastDebounceTime = millis();
-//         Serial.println("Button state changed. Resetting debounce timer.");
-//     }
-
-//     // Check if the debounce delay has passed
-//     if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
-//         Serial.print("Debounce stable state detected: ");
-//         Serial.println(currentButtonState ? "HIGH" : "LOW");
-
-//         // Detect button press (HIGH to LOW transition)
-//         if (currentButtonState == LOW && lastButtonState == HIGH) {
-//             if (!isRecording) {
-//                 Serial.println("Button pressed - starting recording.");
-//                 startRecording();
-//             } else {
-//                 Serial.println("Button pressed but already recording.");
-//             }
-//         }
-
-//         // Detect button release (LOW to HIGH transition)
-//         if (currentButtonState == HIGH && lastButtonState == LOW) {
-//             if (isRecording) {
-//                 Serial.println("Button released - stopping recording.");
-//                 stopRecording();
-//             } else {
-//                 Serial.println("Button released but not recording.");
-//             }
-//         }
-//     } else {
-//         Serial.println("Debounce delay active, ignoring button changes.");
-//     }
-
-//     // Update the last button state
-//     lastButtonState = currentButtonState;
-
-//     // Log recording activity
-//     if (isRecording) {
-//         Serial.println("Recording in progress...");
-//         recordAudio();
-//         digitalWrite(LIGHT_PIN, HIGH);
-//     } else {
-//         Serial.println("Not recording.");
-//         digitalWrite(LIGHT_PIN, LOW);
-//     }
-
-//     delay(100);  // Small delay to avoid flooding the serial monitor
-// }
