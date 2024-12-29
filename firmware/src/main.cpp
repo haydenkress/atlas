@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #include <driver/i2s.h>
-#include <SPIFFS.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include "config.h"
 #include "AudioTools.h"
+#include <LittleFS.h>
 
 // File handling
 const char* RECORDING_FILE = "/recording.wav";
@@ -55,7 +55,7 @@ void writeWavHeader(File &file, uint32_t dataSize) {
 
 void startRecording() {
     // Open file for writing
-    audioFile = SPIFFS.open(RECORDING_FILE, FILE_WRITE);
+    audioFile = LittleFS.open(RECORDING_FILE, FILE_WRITE);
     if (!audioFile) {
         Serial.println("Failed to open file for writing");
         return;
@@ -136,9 +136,9 @@ void setup() {
     pinMode(BUTTON_PIN, INPUT_PULLUP);
     pinMode(LIGHT_PIN, OUTPUT);
 
-    // Initialize SPIFFS
-    if (!SPIFFS.begin(true)) {
-        Serial.println("SPIFFS initialization failed!");
+    // Initialize LittleFS
+    if (!LittleFS.begin(true)) {
+        Serial.println("LittleFS initialization failed!");
         return;
     }
 
@@ -157,7 +157,7 @@ void setup() {
 
     // Setup web server endpoint
     server.on("/recording", HTTP_GET, []() {
-        File file = SPIFFS.open(RECORDING_FILE, FILE_READ);
+        File file = LittleFS.open(RECORDING_FILE, FILE_READ);
         if (!file) {
             server.send(404, "text/plain", "File not found");
             return;
