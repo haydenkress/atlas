@@ -67,24 +67,6 @@ void startRecording() {
     Serial.println("Started recording...");
 }
 
-void stopRecording() {
-    unsigned long recordingDuration = (millis() - recordingStartTime) / 1000;
-
-    // Update WAV header with actual sizes
-    writeWavHeader(audioFile, totalBytesWritten);
-
-    audioFile.close();
-    isRecording = false;
-
-    unsigned long expectedBytes = recordingDuration * I2S_SAMPLE_RATE * I2S_BITS_PER_SAMPLE / 8;
-    
-    Serial.printf("Recording stopped. Duration: %lu seconds, Bytes written: %u\n", 
-        recordingDuration, totalBytesWritten);
-    Serial.printf("Expected bytes: %lu\n", expectedBytes);
-}
-
-
-
 void recordAudio() {
     int32_t i2sReadBuffer[I2S_BUFFER_SIZE / 4];
     size_t bytesRead = 0;
@@ -100,7 +82,7 @@ void recordAudio() {
      size_t samplesRead = bytesRead / sizeof(int32_t);
         sampleCount += samplesRead; 
 
-      static int16_t wavBuffer[I2S_BUFFER_SIZE / 4];
+    static int16_t wavBuffer[I2S_BUFFER_SIZE / 4];
 
     for (size_t i = 0; i < samplesRead; i++) {
     // Assuming left-justified data, take the top 16 bits
@@ -125,6 +107,22 @@ void recordAudio() {
     }
 }
 
+void stopRecording() {
+    unsigned long recordingDuration = (millis() - recordingStartTime) / 1000;
+
+    // write WAV header with actual sizes
+    writeWavHeader(audioFile, totalBytesWritten);
+
+    audioFile.close();
+    isRecording = false;
+
+    unsigned long expectedBytes = recordingDuration * I2S_SAMPLE_RATE * I2S_BITS_PER_SAMPLE / 8;
+    
+    Serial.printf("Recording stopped. Duration: %lu seconds, Bytes written: %u\n", 
+        recordingDuration, totalBytesWritten);
+    Serial.printf("Expected bytes: %lu\n", expectedBytes);
+}
+
 
 void setup() {
     Serial.begin(115200);
@@ -133,7 +131,7 @@ void setup() {
     Serial.println("\n\nInitializing Audio Recorder...");
 
     // Initialize button/light pins
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(BUTTON_PIN, INPUT);
     pinMode(LIGHT_PIN, OUTPUT);
 
     // Initialize LittleFS
@@ -156,15 +154,13 @@ void setup() {
     Serial.println(WiFi.localIP());
 
     // Setup web server endpoint
-    server.on("/recording", HTTP_GET, []() {
+    server.on("/recording.wav", HTTP_GET, []() {
         File file = LittleFS.open(RECORDING_FILE, FILE_READ);
         if (!file) {
             server.send(404, "text/plain", "File not found");
             return;
         }
-        
-        server.sendHeader("Content-Type", "audio/wav");
-        server.sendHeader("Content-Disposition", "attachment; filename=recording.wav");
+
         server.streamFile(file, "audio/wav");
         file.close();
     });
@@ -176,27 +172,12 @@ void setup() {
 }
 
 void loop() {
-
-    static unsigned long lastPrint = 0;
-    // if (millis() - lastPrint > 5000) {  // Print every 5 seconds
-    //     Serial.print("Server IP Address: ");
-    //     Serial.println(WiFi.localIP());
-    //     lastPrint = millis();
-    // }
-
     server.handleClient();
 
     bool currentButtonState = digitalRead(BUTTON_PIN);
-    // Serial.print("Current button state: ");
-    // Serial.println(currentButtonState ? "HIGH" : "LOW");
-
-    // Serial.print("Last button state: ");
-    // Serial.println(lastButtonState ? "HIGH" : "LOW");
 
     if (currentButtonState != lastButtonState) {
-        // Serial.println("Button state changed. Resetting debounce timer.");
-
-                // Detect button press (HIGH to LOW transition)
+        // Detect button press (HIGH to LOW transition)
         if (currentButtonState == HIGH && lastButtonState == LOW) {
             if (!isRecording) {
                 Serial.println("Button pressed - starting recording.");

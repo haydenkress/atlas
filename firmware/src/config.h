@@ -10,8 +10,8 @@
 #define SERVER_IP "69.108.44.80"
 
 // Pin Definitions
-#define BUTTON_PIN 1
-#define LIGHT_PIN 2
+#define BUTTON_PIN 43
+#define LIGHT_PIN 5
 
 // I2S Settings
 #define I2S_MIC_PORT I2S_NUM_0
@@ -21,9 +21,9 @@
 #define I2S_BITS_PER_SAMPLE 16
 
 // I2S Mic Pins
-#define I2S_MIC_SERIAL_CLOCK 7
-#define I2S_MIC_LEFT_RIGHT_CLOCK 9
-#define I2S_MIC_SERIAL_DATA 8
+#define I2S_MIC_SERIAL_CLOCK 1
+#define I2S_MIC_LEFT_RIGHT_CLOCK 3
+#define I2S_MIC_SERIAL_DATA 2
 
 // I2S Speaker Pins
 #define I2S_SPEAKER_SERIAL_CLOCK 5
